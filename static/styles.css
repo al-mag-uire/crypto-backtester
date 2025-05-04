@@ -1,0 +1,38 @@
+/* Base font size for all text */
+.stApp {
+    font-size: 1.2rem;
+}
+
+/* Metrics (the big numbers) */
+.css-1wivap2 {
+    font-size: 3rem !important;
+}
+
+/* Dataframe text */
+.dataframe {
+    font-size: 1.1rem !important;
+}
+.dataframe th, .dataframe td {
+    font-size: 1.1rem !important;
+}
+
+/* Sidebar text */
+.css-pkbazv {
+    font-size: 1.1rem !important;
+}
+
+/* Headers */
+h1 {
+    font-size: 2.5rem !important;
+}
+h2 {
+    font-size: 2rem !important;
+}
+h3 {
+    font-size: 1.5rem !important;
+}
+
+/* Buttons and selectbox */
+.stButton button, .stSelectbox select {
+    font-size: 1.1rem !important;
+}

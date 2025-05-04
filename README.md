@@ -1,19 +1,18 @@
-# Crypto Strategy Backtester Dashboard
+# 🧠 Crypto Strategy Dashboard
 
-This project is a **multi-strategy crypto trading dashboard** built with **Streamlit** and **Python**, designed for backtesting popular algorithmic trading strategies using historical price data from CoinGecko.
+An interactive Streamlit-based crypto backtesting and signal generation dashboard. Includes several algorithmic strategies (EMA Crossover, RSI Mean Reversion, Breakout, MACD, Bollinger Bands) with historical backtesting, performance metrics, and real-time signal detection.
+
+---
 
 ## 🚀 Features
-- Interactive dashboard with sidebar parameter tuning
-- Real-time charting and trade visualization
-- Strategy-specific forms and logic
-- Trade logs with detailed entry/exit prices
 
-## 📈 Supported Strategies
-- **EMA Crossover** with RSI Filter and SL/TP
-- **RSI Mean Reversion** with RSI thresholds and SL/TP
-- **Breakout Strategy** (with optional volume filter)
-- **MACD Crossover**
-- **Bollinger Bands**
+- 📈 Visual backtests with trade markers and equity curves
+- 🧪 Built-in strategy performance metrics
+- 🛠 Real-time signal screener across multiple coins
+- 📊 Compare strategy vs. buy & hold
+- ⚙️ Fully modular architecture for easy strategy development
+
+---
 
 ## ⚙️ How to Run
 ```bash

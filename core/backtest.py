@@ -16,47 +16,55 @@ TAKE_PROFIT_PCT = 0.05  # 5%
 
 
 # ============ BACKTEST FUNCTIONS   ============
-def backtest(df, initial_balance=10000, stop_loss_pct=0.03, take_profit_pct=0.05):
+def backtest(df, initial_balance=10000, stop_loss_pct=0.05, take_profit_pct=0.1):
+    """
+    Backtest a strategy
+    Returns: trades list, pnl, final_balance
+    """
+    trades = []
     balance = initial_balance
-    position = 0
+    position = None
     entry_price = 0
-    trade_log = []
-
+    
     for i in range(1, len(df)):
-        signal = df.iloc[i]['position']
-        price = df.iloc[i]['close']
-        time = df.iloc[i]['timestamp']
-
-        if signal == 1 and balance > 0:  # Buy
-            position = balance / price
-            entry_price = price
-            balance = 0
-            trade_log.append([time, 'BUY', price])
-
-        elif position > 0:
-            # Check for take-profit or stop-loss
-            if price >= entry_price * (1 + take_profit_pct):
-                balance = position * price
-                position = 0
-                trade_log.append([time, 'SELL (TP)', price])
-
-            elif price <= entry_price * (1 - stop_loss_pct):
-                balance = position * price
-                position = 0
-                trade_log.append([time, 'SELL (SL)', price])
-
-            elif signal == -1:
-                balance = position * price
-                position = 0
-                trade_log.append([time, 'SELL', price])
-
-    if position > 0:
-        final_value = position * df.iloc[-1]['close']
-    else:
-        final_value = balance
-
-    pnl = final_value - initial_balance
-    return trade_log, pnl, final_value
+        current_price = df['close'].iloc[i]
+        current_time = df['timestamp'].iloc[i]
+        signal = df['signal'].iloc[i]
+        
+        # Check for stop loss/take profit if in position
+        if position:
+            pnl_pct = (current_price - entry_price) / entry_price
+            
+            # Check stop loss
+            if pnl_pct <= -stop_loss_pct:
+                balance = balance * (1 + pnl_pct)
+                trades.append([current_time, "SELL (SL)", current_price])
+                position = None
+                continue
+                
+            # Check take profit
+            if pnl_pct >= take_profit_pct:
+                balance = balance * (1 + pnl_pct)
+                trades.append([current_time, "SELL (TP)", current_price])
+                position = None
+                continue
+        
+        # Regular signal processing
+        if signal == 1 and not position:  # Buy signal
+            position = "LONG"
+            entry_price = current_price
+            trades.append([current_time, "BUY", current_price])
+            
+        elif signal == -1 and position:  # Sell signal
+            position = None
+            pnl = (current_price - entry_price) / entry_price
+            balance = balance * (1 + pnl)
+            trades.append([current_time, "SELL", current_price])
+    
+    final_balance = balance
+    pnl = final_balance - initial_balance
+    
+    return trades, pnl, final_balance
 
 
 def backtest_mean_reversion(df, initial_balance=10000, stop_loss_pct=0.05, take_profit_pct=0.10):

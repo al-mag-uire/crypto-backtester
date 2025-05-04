@@ -14,3 +14,11 @@ def fetch_ohlcv(coin_id, vs_currency, days):
     df = pd.DataFrame(prices, columns=["timestamp", "close"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     return df
+
+def fetch_price(symbol="BTC-USD"):
+    url = f"https://api.coinbase.com/v2/prices/{symbol}/spot"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return float(response.json()["data"]["amount"])
+    else:
+        raise Exception(f"Failed to fetch price for {symbol}: {response.text}")
