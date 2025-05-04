@@ -11,7 +11,7 @@ from crypto_backtester import (
     INITIAL_BALANCE, STOP_LOSS_PCT, TAKE_PROFIT_PCT,
     apply_mean_reversion_strategy, backtest_mean_reversion,
     apply_breakout_strategy, backtest_breakout,
-    apply_macd_strategy, apply_bollinger_strategy
+    apply_macd_strategy, apply_bollinger_strategy, compute_rsi
 )
 
 # Page config
@@ -19,7 +19,7 @@ st.set_page_config(layout="wide", page_title="Crypto Strategy Dashboard")
 st.title("📈 Crypto Strategy Dashboard")
 
 # === Strategy Selector ===
-strategy = st.sidebar.selectbox("Choose Strategy", ["EMA Crossover", "RSI Mean Reversion", "Breakout", "MACD", "Bollinger Bands"])
+strategy = st.sidebar.selectbox("Choose Strategy", ["EMA Crossover", "RSI Mean Reversion", "Breakout", "MACD", "Bollinger Bands", "RSI Screener", "Real-Time Signals"])
 
 
 # === Market Settings Shared ===
@@ -35,6 +35,68 @@ selected_coin = st.sidebar.selectbox("Select Coin", list(coin_options.keys()))
 coin = coin_options[selected_coin]
 vs_currency = st.sidebar.text_input("Quote Currency", VS_CURRENCY)
 days = st.sidebar.slider("Number of Days", 10, 90, int(DAYS))
+
+# === Utility: Show Performance Table ===
+def show_performance_table(trades_df, pnl, final_val, initial_balance):
+    returns_pct = (final_val - initial_balance) / initial_balance * 100
+    wins = trades_df[trades_df['action'].str.contains('SELL') & trades_df['price'] > trades_df.shift(1)['price']]
+    losses = trades_df[trades_df['action'].str.contains('SELL') & trades_df['price'] <= trades_df.shift(1)['price']]
+    total_trades = len(trades_df[trades_df['action'].str.contains('SELL')])
+    win_rate = len(wins) / total_trades * 100 if total_trades > 0 else 0
+    avg_win = wins['price'].pct_change().mean() * 100 if not wins.empty else 0
+    avg_loss = losses['price'].pct_change().mean() * 100 if not losses.empty else 0
+
+    metrics_df = pd.DataFrame({
+        'Metric': ["Final Value", "Total PnL", "Return %", "# Trades", "Win Rate %", "Avg Win %", "Avg Loss %"],
+        'Value': [
+            f"${final_val:,.2f}",
+            f"${pnl:,.2f}",
+            f"{returns_pct:.2f}%",
+            total_trades,
+            f"{win_rate:.2f}%",
+            f"{avg_win:.2f}%",
+            f"{avg_loss:.2f}%"
+        ]
+    })
+    st.subheader("Performance Metrics")
+    st.dataframe(metrics_df, use_container_width=True)
+
+# === Utility: Show Equity Curve and Drawdown ===
+def show_equity_curve(df, trades_df, initial_balance):
+    equity = []
+    balance = initial_balance
+    position = 0
+    for i, row in df.iterrows():
+        if not trades_df.empty and row['timestamp'] in trades_df['timestamp'].values:
+            action = trades_df[trades_df['timestamp'] == row['timestamp']]['action'].values[0]
+            price = row['close']
+            if 'BUY' in action:
+                position = balance / price
+                balance = 0
+            elif 'SELL' in action:
+                balance = position * price
+                position = 0
+        equity_val = balance + position * row['close']
+        equity.append(equity_val)
+
+    df['equity'] = equity
+    df['drawdown'] = df['equity'] / df['equity'].cummax() - 1
+
+    # Buy and hold line
+    df['buy_and_hold'] = initial_balance * df['close'] / df['close'].iloc[0]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
+    ax1.plot(df['timestamp'], df['equity'], label='Equity Curve', linewidth=2)
+    ax1.plot(df['timestamp'], df['buy_and_hold'], label='Buy & Hold Benchmark', linestyle='--')
+    ax1.set_title('Equity Curve')
+    ax1.legend()
+
+    ax2.plot(df['timestamp'], df['drawdown'], label='Drawdown', color='red')
+    ax2.set_title('Drawdown')
+    ax2.legend()
+
+    st.subheader("Equity Curve and Drawdown")
+    st.pyplot(fig)
 
 # === EMA Crossover Strategy ===
 if strategy == "EMA Crossover":
@@ -88,12 +150,13 @@ if strategy == "EMA Crossover":
                     st.pyplot(fig)
                     st.subheader("Trade Log")
                     st.dataframe(trades_df, use_container_width=True)
-
+                    show_performance_table(trades_df, pnl, final_val, INITIAL_BALANCE)
+                    show_equity_curve(df, trades_df, INITIAL_BALANCE)
                 except Exception as e:
                     st.error(f"❌ An error occurred while processing data: {e}")
 
 # === RSI Mean Reversion Strategy ===
-elif strategy == "RSI Mean Reversion":
+if strategy == "RSI Mean Reversion":
     with st.sidebar.form("rsi_form"):
         st.header("Mean Reversion Parameters")
         rsi_period = st.slider("RSI Period", 5, 30, 14)
@@ -141,7 +204,8 @@ elif strategy == "RSI Mean Reversion":
                     st.pyplot(fig)
                     st.subheader("Trade Log")
                     st.dataframe(trades_df, use_container_width=True)
-
+                    show_performance_table(trades_df, pnl, final_val, INITIAL_BALANCE)
+                    show_equity_curve(df, trades_df, INITIAL_BALANCE)
                 except Exception as e:
                     st.error(f"❌ An error occurred while processing data: {e}")
 
@@ -188,7 +252,8 @@ if strategy == "Breakout":
 
                     st.subheader("Trade Log")
                     st.dataframe(trades_df, use_container_width=True)
-
+                    show_performance_table(trades_df, pnl, final_val, INITIAL_BALANCE)  
+                    show_equity_curve(df, trades_df, INITIAL_BALANCE)
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
@@ -226,11 +291,11 @@ if strategy == "MACD":
         st.pyplot(fig)
         st.subheader("Trade Log")
         st.dataframe(trades_df, use_container_width=True)
-
-
+        show_performance_table(trades_df, pnl, final_val, INITIAL_BALANCE)
+        show_equity_curve(df, trades_df, INITIAL_BALANCE)
 
 # === Bollinger Bands Strategy ===
-elif strategy == "Bollinger Bands":
+if strategy == "Bollinger Bands":
     with st.sidebar.form("bb_form"):
         st.header("Bollinger Bands Parameters")
         window = st.slider("Window Length", 10, 50, 20)
@@ -264,3 +329,71 @@ elif strategy == "Bollinger Bands":
         st.pyplot(fig)
         st.subheader("Trade Log")
         st.dataframe(trades_df, use_container_width=True)
+        show_performance_table(trades_df, pnl, final_val, INITIAL_BALANCE)
+        show_equity_curve(df, trades_df, INITIAL_BALANCE)       
+
+if strategy == "RSI Screener":
+    st.header("📊 Multi-Ticker RSI Screener")
+    rsi_period = st.sidebar.slider("RSI Period", 5, 30, 14)
+    rsi_lower = st.sidebar.slider("Lower RSI Threshold", 10, 50, 30)
+    rsi_upper = st.sidebar.slider("Upper RSI Threshold", 50, 90, 70)
+
+    results = []
+    for name, cid in coin_options.items():
+        try:
+            df = fetch_ohlcv(cid, VS_CURRENCY, DAYS)
+            df["rsi"] = compute_rsi(df["close"], rsi_period)
+            current_rsi = df["rsi"].iloc[-1]
+            rsi_label = "🔥 Oversold" if current_rsi < rsi_lower else ("🚨 Overbought" if current_rsi > rsi_upper else "✅ Neutral")
+            results.append({"Coin": name, "RSI": round(current_rsi, 2), "Signal": rsi_label})
+        except Exception as e:
+            results.append({"Coin": name, "RSI": "Error", "Signal": str(e)})
+
+    screener_df = pd.DataFrame(results)
+    st.dataframe(screener_df, use_container_width=True)
+
+
+# === Real-Time Signal Dashboard ===
+if strategy == "Real-Time Signals":
+    st.header("\U0001F6A8 Real-Time Signal Dashboard")
+    rsi_period = st.sidebar.slider("RSI Period", 5, 30, 14)
+    ema_fast = st.sidebar.slider("Fast EMA", 5, 20, 9)
+    ema_slow = st.sidebar.slider("Slow EMA", 10, 50, 21)
+    show_only_signals = st.sidebar.checkbox("Show Only Coins with Signals", value=False)
+
+    results = []
+    for name, cid in coin_options.items():
+        try:
+            df = fetch_ohlcv(cid, vs_currency, days)
+            df['ema_fast'] = df['close'].ewm(span=ema_fast, adjust=False).mean()
+            df['ema_slow'] = df['close'].ewm(span=ema_slow, adjust=False).mean()
+            df['rsi'] = compute_rsi(df['close'], rsi_period)
+            latest = df.iloc[-1]
+
+            signal = []
+            if latest['ema_fast'] > latest['ema_slow']:
+                signal.append("EMA Bullish")
+            if latest['rsi'] < 30:
+                signal.append("RSI Oversold")
+            elif latest['rsi'] > 70:
+                signal.append("RSI Overbought")
+
+            signal_str = ", ".join(signal) or "Neutral"
+            if show_only_signals and signal_str == "Neutral":
+                continue
+
+            results.append({"Coin": name, "Price": latest['close'], "EMA Fast": round(latest['ema_fast'], 2), "EMA Slow": round(latest['ema_slow'], 2), "RSI": round(latest['rsi'], 2), "Signal": signal_str})
+        except Exception as e:
+            results.append({"Coin": name, "Price": "Error", "EMA Fast": "-", "EMA Slow": "-", "RSI": "-", "Signal": str(e)})
+
+    signal_df = pd.DataFrame(results)
+
+    def highlight_signals(val):
+        if isinstance(val, str) and ("Bullish" in val or "Oversold" in val):
+            return 'background-color: #22c55e; color: black'
+        elif isinstance(val, str) and "Overbought" in val:
+            return 'background-color: #f87171; color: black'
+        return ''
+
+    styled_df = signal_df.style.applymap(highlight_signals, subset=['Signal'])
+    st.dataframe(styled_df, use_container_width=True)
