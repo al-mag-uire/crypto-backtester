@@ -3,16 +3,24 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 import requests
-from crypto_backtester import (
-    fetch_ohlcv, apply_strategy, backtest,
+
+# Core utils
+from core.fetch import fetch_ohlcv
+from core.indicators import compute_rsi
+from core.backtest import (
     COIN_ID, VS_CURRENCY, DAYS,
     EMA_FAST, EMA_SLOW,
     RSI_PERIOD, RSI_BUY_THRESHOLD,
     INITIAL_BALANCE, STOP_LOSS_PCT, TAKE_PROFIT_PCT,
-    apply_mean_reversion_strategy, backtest_mean_reversion,
-    apply_breakout_strategy, backtest_breakout,
-    apply_macd_strategy, apply_bollinger_strategy, compute_rsi
+    backtest, backtest_mean_reversion, backtest_breakout
 )
+
+# Strategy functions
+from strategies.ema import apply_ema_strategy as apply_ema_strategy
+from strategies.rsi import apply_mean_reversion_strategy
+from strategies.breakout import apply_breakout_strategy
+from strategies.macd import apply_macd_strategy
+from strategies.bollinger import apply_bollinger_strategy
 
 # Page config
 st.set_page_config(layout="wide", page_title="Crypto Strategy Dashboard")
@@ -118,7 +126,7 @@ if strategy == "EMA Crossover":
             else:
                 try:
                     df = fetch_ohlcv(coin, vs_currency, days)
-                    df = apply_strategy(df, fast, slow, rsi_period, rsi_threshold)
+                    df = apply_ema_strategy(df, fast, slow, rsi_period, rsi_threshold)
                     trades, pnl, final_val = backtest(df, INITIAL_BALANCE, sl_pct, tp_pct)
                     trades_df = pd.DataFrame(trades, columns=["timestamp", "action", "price"])
 
