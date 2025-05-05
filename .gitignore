@@ -1,11 +1,32 @@
-venv/
+# Python
 __pycache__/
-*.csv
-*.png
+*.py[cod]
+*.egg-info/
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.development
-.env.test
+.venv/
+venv/
+*.log
+
+# Jupyter
+.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/config.toml
+paper_trades.csv
+
+# IDEs
+.vscode/
+.idea/
+
+# Matplotlib cache
+.matplotlib/
+
+# Logs and temp
+*.sqlite
+*.db
+*.bak
+*.tmp

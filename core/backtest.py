@@ -1,6 +1,8 @@
 # crypto_backtester.py
 
 import pandas as pd
+from typing import Dict, Any
+import numpy as np
 
 # ============ CONFIG ============
 COIN_ID = 'bitcoin'  # CoinGecko ID
@@ -142,4 +144,75 @@ def backtest_breakout(df, initial_balance=10000, stop_loss_pct=0.05, take_profit
 
     pnl = final_value - initial_balance
     return trade_log, pnl, final_value
+
+
+def run_backtest(
+    df: pd.DataFrame,
+    strategy_func: callable,
+    strategy_params: Dict[str, Any],
+    initial_capital: float = 10000,
+    position_size: float = 0.5,
+    stop_loss: float = 0.05,
+    take_profit: float = 0.1
+) -> Dict[str, pd.DataFrame]:
+    """
+    Run backtest for a given strategy.
+    """
+    # Initialize results DataFrame
+    results = df.copy()
+    results['position'] = 0
+    results['equity'] = initial_capital
+    
+    # Trading variables
+    position = 0
+    entry_price = 0
+    capital = initial_capital
+    trades = []
+    
+    # Get signals from DataFrame
+    signals = strategy_func(results)
+    
+    # Iterate through data
+    for i in range(1, len(results)):
+        # Update equity with previous position's P&L
+        if position != 0:
+            price_change = (results['close'].iloc[i] - results['close'].iloc[i-1]) / results['close'].iloc[i-1]
+            capital = capital * (1 + position * price_change)
+        
+        results.loc[results.index[i], 'equity'] = capital
+        
+        # Check for signals
+        if signals.iloc[i] == 1 and position <= 0:  # Buy signal
+            position = 1
+            entry_price = results['close'].iloc[i]
+            trades.append({
+                'timestamp': results.index[i],
+                'type': 'buy',
+                'price': entry_price,
+                'capital': capital
+            })
+            
+        elif signals.iloc[i] == -1 and position >= 0:  # Sell signal
+            position = -1
+            entry_price = results['close'].iloc[i]
+            trades.append({
+                'timestamp': results.index[i],
+                'type': 'sell',
+                'price': entry_price,
+                'capital': capital
+            })
+        
+        results.loc[results.index[i], 'position'] = position
+    
+    # Calculate drawdown
+    results['peak'] = results['equity'].cummax()
+    results['drawdown'] = (results['equity'] - results['peak']) / results['peak'] * 100
+    
+    # Create trades DataFrame
+    trades_df = pd.DataFrame(trades)
+    
+    return {
+        'results': results,
+        'trades': trades_df if not trades_df.empty else pd.DataFrame(columns=['timestamp', 'type', 'price', 'capital'])
+    }
 
