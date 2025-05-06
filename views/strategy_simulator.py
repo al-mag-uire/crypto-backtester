@@ -47,7 +47,9 @@ def get_strategy_params(strategy: str) -> Dict[str, Any]:
         })
     elif strategy == "Breakout":
         params.update({
-            "window": st.sidebar.slider("Lookback Window", 5, 50, 20)
+            "window": st.sidebar.slider("Lookback Window", 5, 50, 20),
+            "volatility_factor": st.sidebar.slider("Volatility Factor", 0.5, 2.0, 1.0, 0.1),
+            "volume_factor": st.sidebar.slider("Volume Factor", 1.0, 3.0, 1.5, 0.1)
         })
     elif strategy == "MACD":
         params.update({
@@ -55,7 +57,7 @@ def get_strategy_params(strategy: str) -> Dict[str, Any]:
             "slow": st.sidebar.slider("MACD Slow", 10, 50, 26),
             "signal": st.sidebar.slider("Signal", 5, 20, 9)
         })
-    elif strategy == "Bollinger":
+    elif strategy == "Bollinger Bands":
         params.update({
             "window": st.sidebar.slider("Window Length", 10, 50, 20),
             "num_std": st.sidebar.slider("# of Std Dev", 1, 3, 2)
@@ -68,7 +70,7 @@ def show_strategy_simulator():
     st.header("📈 Strategy Simulator")
     
     # Strategy selection
-    strategy_options = ["EMA", "RSI", "Breakout", "MACD", "Bollinger"]
+    strategy_options = ["EMA", "RSI", "Breakout", "MACD", "Bollinger Bands"]
     strategy = st.selectbox("Select Strategy", strategy_options)
     
     # Coin selection

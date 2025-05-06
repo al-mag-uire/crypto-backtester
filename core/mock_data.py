@@ -12,7 +12,7 @@ def generate_mock_data(days: int = 30) -> pd.DataFrame:
     # Generate timestamps
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
-    timestamps = pd.date_range(start=start_date, end=end_date, freq='1H')
+    timestamps = pd.date_range(start=start_date, end=end_date, freq='h')
     
     # Generate mock price data
     np.random.seed(42)  # For reproducibility
@@ -25,11 +25,11 @@ def generate_mock_data(days: int = 30) -> pd.DataFrame:
         price += change
         prices.append(price)
     
-    # Create DataFrame
+    # Create DataFrame with numeric index
     df = pd.DataFrame({
         'timestamp': timestamps,
         'close': prices
-    })
+    }).reset_index(drop=True)  # Use numeric index instead of timestamp
     
     # Generate OHLC data
     df['open'] = df['close'].shift(1)
@@ -38,5 +38,8 @@ def generate_mock_data(days: int = 30) -> pd.DataFrame:
     
     # Fill first row's open price
     df.loc[0, 'open'] = df.loc[0, 'close'] * 0.99
+    
+    # Set timestamp as index after calculations
+    df.set_index('timestamp', inplace=True)
     
     return df 

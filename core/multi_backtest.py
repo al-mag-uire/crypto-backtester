@@ -12,6 +12,7 @@ import numpy as np
 import os
 import hashlib
 import json
+from typing import List, Dict, Any
 
 CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -86,37 +87,117 @@ def calculate_metrics(trades, df, initial_balance, final_balance):
 
     return pnl, win_rate, sharpe_ratio
 
-def run_multi_backtest(coins, strategy_func, strategy_name, vs_currency="usd", days=30):
-    results = []
+def run_multi_backtest(
+    coins: List[str],
+    strategy: str,
+    days: int,
+    initial_balance: float,
+    position_size: float,
+    stop_loss: float,
+    take_profit: float,
+    rebalance_days: int,
+    strategy_params: Dict[str, Any],
+    testing_mode: bool = True
+) -> Dict[str, Any]:
+    """
+    Run backtest across multiple coins with portfolio-level tracking
+    """
+    results = {}
+    portfolio_equity = pd.Series(dtype=float)
+    allocation_per_coin = initial_balance * position_size
+    
+    # Strategy function mapping
+    strategy_funcs = {
+        'ema': apply_ema_strategy,
+        'rsi': apply_mean_reversion_strategy,
+        'macd': apply_macd_strategy,
+        'bollinger': apply_bollinger_strategy,
+        'breakout': apply_breakout_strategy
+    }
+    
+    if strategy not in strategy_funcs:
+        raise ValueError(f"Unknown strategy: {strategy}")
+    
+    strategy_func = strategy_funcs[strategy]
+    
+    # First fetch all data and align dates
+    coin_data = {}
+    common_dates = None
+    
     for coin in coins:
         try:
-            df = fetch_with_cache(coin, vs_currency, days)
-            if df.empty:
-                print(f"No data for {coin}")
-                continue
-
-            broker = PaperBroker(initial_balance=10000)
-            trades, df = simulate_over_time(df, strategy_func, broker, coin)
-            final_val = broker.get_balance()
-
-            pnl, win_rate, sharpe = calculate_metrics(trades, df, 10000, final_val)
-
-            results.append({
-                "Coin": coin,
-                "Strategy": strategy_name,
-                "Total Trades": len(trades),
-                "PnL": round(pnl, 2),
-                "Final Balance": round(final_val, 2),
-                "Win Rate (%)": round(win_rate, 2),
-                "Sharpe Ratio": round(sharpe, 2)
-            })
+            df = fetch_with_cache(coin, "usd", days)
+            if not df.empty:
+                coin_data[coin] = df
+                if common_dates is None:
+                    common_dates = set(df.index)
+                else:
+                    common_dates = common_dates.intersection(set(df.index))
         except Exception as e:
-            print(f"Error processing {coin}: {e}")
-
-    return pd.DataFrame(results)
+            print(f"Error fetching {coin}: {str(e)}")
+            continue
+    
+    if not coin_data:
+        return results
+    
+    # Align all dataframes to common dates
+    common_dates = sorted(list(common_dates))
+    for coin in coin_data:
+        coin_data[coin] = coin_data[coin].loc[common_dates]
+    
+    # Run backtest for each coin
+    for coin, df in coin_data.items():
+        try:
+            # Apply strategy
+            df = strategy_func(df.copy(), **strategy_params)
+            
+            # Run backtest
+            trades, pnl, final_balance = backtest(
+                df,
+                initial_balance=allocation_per_coin,
+                stop_loss_pct=stop_loss,
+                take_profit_pct=take_profit
+            )
+            
+            # Calculate metrics
+            win_rate, sharpe_ratio = calculate_metrics(trades, df, allocation_per_coin, final_balance)
+            
+            results[coin] = {
+                'trades': trades,
+                'pnl': pnl,
+                'final_balance': final_balance,
+                'return_pct': (final_balance - allocation_per_coin) / allocation_per_coin * 100,
+                'win_rate': win_rate,
+                'sharpe_ratio': sharpe_ratio,
+                'equity_curve': df['equity']
+            }
+            
+            # Add to portfolio equity
+            if portfolio_equity.empty:
+                portfolio_equity = df['equity']
+            else:
+                portfolio_equity = portfolio_equity.add(df['equity'])
+            
+        except Exception as e:
+            print(f"Error processing {coin}: {str(e)}")
+            continue
+    
+    # Add portfolio-level metrics
+    if results:
+        portfolio_return = (portfolio_equity.iloc[-1] - initial_balance) / initial_balance * 100
+        portfolio_drawdown = (portfolio_equity / portfolio_equity.cummax() - 1).min() * 100
+        
+        results['portfolio'] = {
+            'equity_curve': portfolio_equity,
+            'final_balance': portfolio_equity.iloc[-1],
+            'return_pct': portfolio_return,
+            'max_drawdown_pct': portfolio_drawdown
+        }
+    
+    return results
 
 # Example usage:
 if __name__ == "__main__":
     coins = ["bitcoin", "ethereum", "solana", "cardano"]
-    df_results = run_multi_backtest(coins, apply_ema_strategy, "EMA")
+    df_results = run_multi_backtest(coins, "ema", 30, 10000, 0.2, 0.05, 0.1, 7, {}, True)
     print(df_results)

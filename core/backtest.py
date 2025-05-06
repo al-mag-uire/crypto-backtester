@@ -160,6 +160,11 @@ def run_backtest(
     """
     # Initialize results DataFrame
     results = df.copy()
+    
+    # Reset index if it exists and ensure timestamp column is present
+    if 'timestamp' not in results.columns and results.index.name == 'timestamp':
+        results = results.reset_index()
+    
     results['position'] = 0
     results['equity'] = initial_capital
     
@@ -169,40 +174,41 @@ def run_backtest(
     capital = initial_capital
     trades = []
     
-    # Get signals from DataFrame
+    # Get signals from DataFrame and store them
     signals = strategy_func(results)
+    results['signal'] = signals['signal'] if isinstance(signals, pd.DataFrame) else signals
     
     # Iterate through data
     for i in range(1, len(results)):
         # Update equity with previous position's P&L
         if position != 0:
-            price_change = (results['close'].iloc[i] - results['close'].iloc[i-1]) / results['close'].iloc[i-1]
+            price_change = (results.iloc[i]['close'] - results.iloc[i-1]['close']) / results.iloc[i-1]['close']
             capital = capital * (1 + position * price_change)
         
-        results.loc[results.index[i], 'equity'] = capital
+        results.iloc[i, results.columns.get_loc('equity')] = capital
         
         # Check for signals
-        if signals.iloc[i] == 1 and position <= 0:  # Buy signal
+        if results.iloc[i]['signal'] == 1 and position <= 0:  # Buy signal
             position = 1
-            entry_price = results['close'].iloc[i]
+            entry_price = results.iloc[i]['close']
             trades.append({
-                'timestamp': results.index[i],
+                'timestamp': results.iloc[i]['timestamp'],
                 'type': 'buy',
                 'price': entry_price,
                 'capital': capital
             })
             
-        elif signals.iloc[i] == -1 and position >= 0:  # Sell signal
+        elif results.iloc[i]['signal'] == -1 and position >= 0:  # Sell signal
             position = -1
-            entry_price = results['close'].iloc[i]
+            entry_price = results.iloc[i]['close']
             trades.append({
-                'timestamp': results.index[i],
+                'timestamp': results.iloc[i]['timestamp'],
                 'type': 'sell',
                 'price': entry_price,
                 'capital': capital
             })
         
-        results.loc[results.index[i], 'position'] = position
+        results.iloc[i, results.columns.get_loc('position')] = position
     
     # Calculate drawdown
     results['peak'] = results['equity'].cummax()

@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
 from core.multi_backtest import run_multi_backtest
 from strategies.ema import apply_ema_strategy
 from strategies.rsi import apply_mean_reversion_strategy
@@ -41,20 +43,20 @@ def get_strategy_params(strategy: str) -> Dict[str, Any]:
             "rsi_buy": st.sidebar.slider("RSI Buy", 10, 40, 30),
             "rsi_sell": st.sidebar.slider("RSI Sell", 60, 90, 70)
         })
-    elif strategy == "Breakout":
-        params.update({
-            "window": st.sidebar.slider("Lookback Window", 5, 50, 20)
-        })
     elif strategy == "MACD":
         params.update({
             "fast": st.sidebar.slider("MACD Fast", 5, 30, 12),
             "slow": st.sidebar.slider("MACD Slow", 10, 50, 26),
             "signal": st.sidebar.slider("Signal", 5, 20, 9)
         })
-    elif strategy == "Bollinger Bands":
+    elif strategy == "Bollinger":
         params.update({
             "window": st.sidebar.slider("Window Length", 10, 50, 20),
-            "num_std": st.sidebar.slider("# of Std Dev", 1, 3, 2)
+            "num_std": st.sidebar.slider("Number of Std Dev", 1, 3, 2)
+        })
+    elif strategy == "Breakout":
+        params.update({
+            "window": st.sidebar.slider("Lookback Window", 5, 50, 20)
         })
     
     return params
@@ -77,97 +79,203 @@ def plot_portfolio_performance(results: pd.DataFrame) -> None:
     
     st.pyplot(fig)
 
-def show_multi_backtest():
-    """Display the multi-coin backtest page."""
-    st.header("📊 Multi-Coin Backtest")
+def show_performance_comparison(results: Dict[str, Any]) -> None:
+    """Display performance comparison table for all coins"""
+    # Prepare metrics for each coin
+    metrics = []
     
-    # Strategy selection
-    strategy_options = ["EMA", "RSI", "Breakout", "MACD", "Bollinger"]
-    strategy = st.selectbox("Select Strategy", strategy_options)
+    for coin, data in results.items():
+        if coin != 'portfolio':  # Skip portfolio metrics for this table
+            metrics.append({
+                'Coin': coin.upper(),
+                'Return %': f"{data['return_pct']:.2f}%",
+                'Final Balance': f"${data['final_balance']:,.2f}",
+                'Win Rate': f"{data['win_rate']:.1f}%",
+                'Sharpe Ratio': f"{data['sharpe_ratio']:.2f}",
+                'PnL': f"${data['pnl']:,.2f}",
+                'Trades': len(data['trades'])
+            })
     
-    # Coin selection
-    available_coins = {
-        "Bitcoin (BTC)": "bitcoin",
-        "Ethereum (ETH)": "ethereum",
-        "Solana (SOL)": "solana",
-        "Cardano (ADA)": "cardano",
-        "Polkadot (DOT)": "polkadot",
-        "Chainlink (LINK)": "chainlink",
-        "Avalanche (AVAX)": "avalanche-2",
-        "Polygon (MATIC)": "matic-network"
-    }
+    # Convert to DataFrame and display
+    df_metrics = pd.DataFrame(metrics)
+    df_metrics.set_index('Coin', inplace=True)
+    st.table(df_metrics)
+
+def plot_equity_curves(results: Dict[str, Any]) -> None:
+    """Plot equity curves for all coins and portfolio"""
+    fig = go.Figure()
     
-    selected_coins = st.multiselect(
-        "Select Coins",
-        options=list(available_coins.keys()),
-        default=list(available_coins.keys())[:4]
+    # Plot individual coin equity curves
+    for coin, data in results.items():
+        if coin != 'portfolio':
+            fig.add_trace(go.Scatter(
+                y=data['equity_curve'],
+                name=coin.upper(),
+                mode='lines',
+                line=dict(width=1),
+                opacity=0.7
+            ))
+    
+    # Plot portfolio equity curve
+    if 'portfolio' in results:
+        fig.add_trace(go.Scatter(
+            y=results['portfolio']['equity_curve'],
+            name='Portfolio Total',
+            mode='lines',
+            line=dict(width=2, color='black'),
+            opacity=1
+        ))
+    
+    fig.update_layout(
+        title='Equity Curves Comparison',
+        xaxis_title='Time',
+        yaxis_title='Equity ($)',
+        height=600,
+        showlegend=True
     )
     
-    if not selected_coins:
-        st.warning("Please select at least one coin.")
-        return
+    st.plotly_chart(fig, use_container_width=True)
+
+def plot_drawdown_analysis(results: Dict[str, Any]) -> None:
+    """Plot drawdown analysis for all coins"""
+    fig = go.Figure()
+    
+    for coin, data in results.items():
+        if coin != 'portfolio':
+            # Calculate drawdown series
+            equity = data['equity_curve']
+            drawdown = (equity / equity.cummax() - 1) * 100
+            
+            fig.add_trace(go.Scatter(
+                y=drawdown,
+                name=coin.upper(),
+                mode='lines',
+                line=dict(width=1),
+                opacity=0.7
+            ))
+    
+    fig.update_layout(
+        title='Drawdown Analysis',
+        xaxis_title='Time',
+        yaxis_title='Drawdown (%)',
+        height=400,
+        showlegend=True,
+        yaxis_tickformat='%'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+def calculate_correlation_matrix(results: Dict[str, Any]) -> pd.DataFrame:
+    """Calculate correlation matrix between coin returns"""
+    # Extract returns for each coin
+    returns = {}
+    for coin, data in results.items():
+        if coin != 'portfolio':
+            returns[coin.upper()] = data['equity_curve'].pct_change()
+    
+    # Create correlation matrix
+    return pd.DataFrame(returns).corr()
+
+def show_multi_backtest():
+    """Display the multi-asset backtest page"""
+    st.header("📊 Multi-Asset Backtest")
+    
+    # Sidebar inputs
+    with st.sidebar:
+        st.subheader("Backtest Parameters")
         
-    coins = [available_coins[coin] for coin in selected_coins]
+        # Strategy selection
+        strategy = st.selectbox(
+            "Select Strategy",
+            ["ema", "rsi", "macd", "bollinger", "breakout"],
+            format_func=lambda x: x.upper()
+        )
+        
+        # Coin selection
+        coins = st.multiselect(
+            "Select Coins",
+            ["bitcoin", "ethereum", "solana", "cardano", "binancecoin"],
+            default=["bitcoin", "ethereum"],
+            format_func=lambda x: x.upper()
+        )
+        
+        # Basic parameters
+        days = st.slider("Backtest Days", 30, 365, 90)
+        initial_balance = st.number_input("Initial Balance ($)", 1000, 1000000, 10000)
+        position_size = st.slider("Position Size per Coin (%)", 1, 100, 20) / 100
+        stop_loss = st.slider("Stop Loss (%)", 1, 50, 5) / 100
+        take_profit = st.slider("Take Profit (%)", 1, 50, 10) / 100
+        rebalance_days = st.slider("Rebalance Days", 1, 30, 7)
+        
+        # Strategy-specific parameters
+        st.subheader("Strategy Parameters")
+        strategy_params = {}
+        
+        if strategy == "ema":
+            strategy_params = {
+                "fast": st.slider("Fast EMA", 5, 50, 12),
+                "slow": st.slider("Slow EMA", 10, 200, 26),
+                "rsi_period": st.slider("RSI Period", 5, 30, 14),
+                "rsi_threshold": st.slider("RSI Threshold", 10, 40, 30)
+            }
+        elif strategy == "rsi":
+            strategy_params = {
+                "rsi_period": st.slider("RSI Period", 5, 30, 14),
+                "rsi_buy": st.slider("RSI Buy Level", 10, 40, 30),
+                "rsi_sell": st.slider("RSI Sell Level", 60, 90, 70)
+            }
+        # Add parameters for other strategies as needed
+        
+        run_test = st.button("Run Backtest", type="primary")
     
-    # Get parameters
-    backtest_params, submitted = get_multi_backtest_params()
-    strategy_params = get_strategy_params(strategy)
-    
-    if submitted:
-        with st.spinner("Running multi-coin backtest..."):
-            try:
-                # Map strategy functions
-                strategy_funcs = {
-                    "EMA": apply_ema_strategy,
-                    "RSI": apply_mean_reversion_strategy,
-                    "Breakout": apply_breakout_strategy,
-                    "MACD": apply_macd_strategy,
-                    "Bollinger Bands": apply_bollinger_strategy
-                }
-                
-                # Run backtest
-                results, coin_metrics = run_multi_backtest(
-                    coins=coins,
-                    strategy_func=strategy_funcs[strategy],
-                    strategy_params=strategy_params,
-                    initial_balance=backtest_params["initial_balance"],
-                    position_size=backtest_params["position_size"],
-                    stop_loss=backtest_params["stop_loss"],
-                    take_profit=backtest_params["take_profit"],
-                    days=backtest_params["days"],
-                    rebalance_days=backtest_params["rebalance_days"]
-                )
-                
-                # Display overall results
-                final_equity = results['total_equity'].iloc[-1]
-                total_return = (final_equity - backtest_params["initial_balance"]) / backtest_params["initial_balance"] * 100
-                max_drawdown = (results['total_equity'] / results['total_equity'].cummax() - 1).min() * 100
-                
+    # Main content area
+    if run_test and coins:
+        with st.spinner("Running backtest..."):
+            results = run_multi_backtest(
+                coins=coins,
+                strategy=strategy,
+                days=days,
+                initial_balance=initial_balance,
+                position_size=position_size,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                rebalance_days=rebalance_days,
+                strategy_params=strategy_params
+            )
+            
+            if results:
+                # Portfolio Summary
+                st.subheader("Portfolio Summary")
+                portfolio_metrics = results['portfolio']
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("Final Portfolio Value", f"${final_equity:,.2f}")
+                    st.metric("Portfolio Return", 
+                             f"{portfolio_metrics['return_pct']:.2f}%")
                 with col2:
-                    st.metric("Total Return", f"{total_return:.1f}%")
+                    st.metric("Final Balance", 
+                             f"${portfolio_metrics['final_balance']:,.2f}")
                 with col3:
-                    st.metric("Max Drawdown", f"{max_drawdown:.1f}%")
+                    st.metric("Max Drawdown", 
+                             f"{portfolio_metrics['max_drawdown_pct']:.2f}%")
                 
-                # Plot portfolio performance
-                st.subheader("Portfolio Performance")
-                plot_portfolio_performance(results)
+                # Individual Coin Performance
+                st.subheader("Coin Performance Comparison")
+                show_performance_comparison(results)
                 
-                # Display individual coin metrics
-                st.subheader("Individual Coin Performance")
-                metrics_df = pd.DataFrame(coin_metrics).T
-                metrics_df.columns = ["Total Trades", "Win Rate", "Profit/Loss", "Return %"]
-                st.dataframe(metrics_df, use_container_width=True)
+                # Equity Curves
+                st.subheader("Equity Curves")
+                plot_equity_curves(results)
                 
-                # Display trade history
-                st.subheader("Trade History")
-                if 'trades' in results:
-                    trades_df = results['trades'].copy()
-                    trades_df['timestamp'] = pd.to_datetime(trades_df['timestamp'])
-                    st.dataframe(trades_df, use_container_width=True)
+                # Drawdown Analysis
+                st.subheader("Drawdown Analysis")
+                plot_drawdown_analysis(results)
                 
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-                st.write("Error details:", e.__class__.__name__) 
+                # Correlation Matrix
+                st.subheader("Correlation Matrix")
+                corr_matrix = calculate_correlation_matrix(results)
+                st.dataframe(corr_matrix.style.format("{:.2f}").background_gradient(cmap='RdYlGn'))
+            
+            else:
+                st.error("No results returned from backtest")
+    else:
+        st.info("Select coins and click 'Run Backtest' to start") 

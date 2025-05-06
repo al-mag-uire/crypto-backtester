@@ -1,8 +1,8 @@
 import pandas as pd
 from utils.chart_utils import plot_strategy_indicators, display_strategy_metrics
 
-def apply_bollinger_strategy(df: pd.DataFrame, window: int = 20, num_std: int = 2) -> pd.DataFrame:
-    """Apply Bollinger Bands strategy."""
+def apply_bollinger_strategy(df: pd.DataFrame, window: int = 20, num_std: float = 2.0) -> pd.DataFrame:
+    """Apply Bollinger Bands strategy"""
     # Calculate Bollinger Bands
     df['middle_band'] = df['close'].rolling(window=window).mean()
     std = df['close'].rolling(window=window).std()
@@ -13,20 +13,14 @@ def apply_bollinger_strategy(df: pd.DataFrame, window: int = 20, num_std: int = 
     df['signal'] = 0
     
     # Generate signals
-    for i in range(1, len(df)):
-        # Buy when price crosses below lower band
-        if df['close'].iloc[i] < df['lower_band'].iloc[i] and df['close'].iloc[i-1] >= df['lower_band'].iloc[i-1]:
-            df.iloc[i, df.columns.get_loc('signal')] = 1
-        # Sell when price crosses above upper band
-        elif df['close'].iloc[i] > df['upper_band'].iloc[i] and df['close'].iloc[i-1] <= df['upper_band'].iloc[i-1]:
-            df.iloc[i, df.columns.get_loc('signal')] = -1
+    df.loc[df['close'] < df['lower_band'], 'signal'] = 1  # Buy signal
+    df.loc[df['close'] > df['upper_band'], 'signal'] = -1  # Sell signal
     
-    # Display metrics and chart
+    # Display metrics only
     strategy_params = {
-        "Window Length": window,
+        "Window": window,
         "Standard Deviations": num_std
     }
     display_strategy_metrics(df, strategy_params)
-    plot_strategy_indicators(df, "bollinger")
     
     return df

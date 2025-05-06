@@ -5,16 +5,23 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from utils.chart_utils import plot_strategy_indicators, display_strategy_metrics
 
-def apply_ema_strategy(df: pd.DataFrame, fast: int = 12, slow: int = 26, rsi_period: int = 14, rsi_threshold: int = 30) -> pd.DataFrame:
+def apply_ema_strategy(df: pd.DataFrame, 
+                      fast: int = 12, 
+                      slow: int = 26, 
+                      rsi_period: int = 14, 
+                      rsi_oversold: int = 30,
+                      rsi_overbought: int = 70) -> pd.DataFrame:
     """
-    Apply EMA Crossover strategy with RSI filter
+    Apply EMA Crossover strategy with RSI filters
     
-    Args:
-        df: DataFrame with OHLCV data
-        fast: Fast EMA period
-        slow: Slow EMA period
-        rsi_period: RSI period
-        rsi_threshold: RSI threshold for oversold condition
+    Strategy Logic:
+    Buy when:
+    1. Fast EMA crosses above Slow EMA OR
+    2. RSI is oversold and price is above fast EMA
+    
+    Sell when:
+    1. Fast EMA crosses below Slow EMA OR
+    2. RSI reaches overbought levels
     """
     # Calculate EMAs
     df['ema_fast'] = df['close'].ewm(span=fast, adjust=False).mean()
@@ -33,27 +40,30 @@ def apply_ema_strategy(df: pd.DataFrame, fast: int = 12, slow: int = 26, rsi_per
     # Generate signals
     for i in range(1, len(df)):
         # Buy conditions:
-        # 1. Fast EMA crosses above Slow EMA
-        # 2. RSI is below threshold (oversold)
-        if (df['ema_fast'].iloc[i] > df['ema_slow'].iloc[i] and 
-            df['ema_fast'].iloc[i-1] <= df['ema_slow'].iloc[i-1] and 
-            df['rsi'].iloc[i] < rsi_threshold):
+        # 1. Fast EMA crosses above Slow EMA OR
+        # 2. RSI is oversold and price is above fast EMA
+        if ((df['ema_fast'].iloc[i] > df['ema_slow'].iloc[i] and 
+             df['ema_fast'].iloc[i-1] <= df['ema_slow'].iloc[i-1]) or
+            (df['rsi'].iloc[i] < rsi_oversold and 
+             df['close'].iloc[i] > df['ema_fast'].iloc[i])):
             df.iloc[i, df.columns.get_loc('signal')] = 1
             
         # Sell conditions:
-        # 1. Fast EMA crosses below Slow EMA
-        elif (df['ema_fast'].iloc[i] < df['ema_slow'].iloc[i] and 
-              df['ema_fast'].iloc[i-1] >= df['ema_slow'].iloc[i-1]):
+        # 1. Fast EMA crosses below Slow EMA OR
+        # 2. RSI reaches overbought levels
+        elif ((df['ema_fast'].iloc[i] < df['ema_slow'].iloc[i] and 
+               df['ema_fast'].iloc[i-1] >= df['ema_slow'].iloc[i-1]) or
+              df['rsi'].iloc[i] > rsi_overbought):
             df.iloc[i, df.columns.get_loc('signal')] = -1
     
-    # Display metrics and chart
+    # Display metrics
     strategy_params = {
         "Fast EMA": fast,
         "Slow EMA": slow,
         "RSI Period": rsi_period,
-        "RSI Threshold": rsi_threshold
+        "RSI Oversold": rsi_oversold,
+        "RSI Overbought": rsi_overbought
     }
     display_strategy_metrics(df, strategy_params)
-    plot_strategy_indicators(df, "ema")
     
     return df

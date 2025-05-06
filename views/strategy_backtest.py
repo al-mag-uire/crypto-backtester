@@ -7,6 +7,7 @@ from datetime import datetime
 from core.fetch import fetch_ohlcv
 from core.backtest import run_backtest
 from components.performance_metrics import show_performance_table, show_equity_curve
+from utils.chart_utils import plot_strategy_indicators
 from strategies.ema import apply_ema_strategy
 from strategies.rsi import apply_mean_reversion_strategy
 from strategies.breakout import apply_breakout_strategy
@@ -40,9 +41,17 @@ def show_strategy_backtest(strategy: str, coin: str, vs_currency: str, days: int
                 )
             
             elif strategy == "ema":
+                # Update parameter names for EMA strategy
+                updated_params = {
+                    'fast': strategy_params.get('fast', 12),
+                    'slow': strategy_params.get('slow', 26),
+                    'rsi_period': strategy_params.get('rsi_period', 14),
+                    'rsi_oversold': strategy_params.get('rsi_oversold', 30),
+                    'rsi_overbought': strategy_params.get('rsi_overbought', 70)
+                }
                 df = apply_ema_strategy(
                     df=df,
-                    **strategy_params
+                    **updated_params
                 )
             
             elif strategy == "breakout":
@@ -73,6 +82,10 @@ def show_strategy_backtest(strategy: str, coin: str, vs_currency: str, days: int
             stop_loss=0.05,
             take_profit=0.1
         )
+        
+        # Add this section to show the strategy chart
+        st.subheader("Strategy Chart")
+        plot_strategy_indicators(df, strategy)
         
         # Show performance metrics
         st.subheader("Performance Summary")

@@ -15,16 +15,21 @@ def get_screener_params() -> Dict:
             "min_volume": st.number_input("Min 24h Volume ($)", 1000, 1000000000, 1000000),
             "days": st.slider("Lookback Days", 1, 30, 7)
         }
+        testing_mode = st.sidebar.checkbox(
+            "Testing Mode (Mock Data)", 
+            value=False,
+            help="Use mock data to avoid API rate limits"
+        )
         submitted = st.form_submit_button("Run Screener")
-        return params, submitted
+        return params, testing_mode, submitted
 
-def screen_coins(coins: List[str], vs_currency: str, params: Dict) -> pd.DataFrame:
+def screen_coins(coins: List[str], vs_currency: str, params: Dict, testing_mode: bool = False) -> pd.DataFrame:
     """Screen coins based on RSI criteria."""
     results = []
     
     for coin in coins:
         try:
-            df = fetch_ohlcv(coin, vs_currency, params["days"])
+            df = fetch_ohlcv(coin, vs_currency, params["days"], testing_mode=testing_mode)
             if df.empty:
                 continue
                 
@@ -65,12 +70,12 @@ def show_screener():
     coins = [c.strip().lower() for c in coin_input.split(",") if c.strip()]
     
     # Get screener parameters
-    params, submitted = get_screener_params()
+    params, testing_mode, submitted = get_screener_params()
     
     if submitted:
         with st.spinner("Screening coins..."):
             try:
-                results_df = screen_coins(coins, "usd", params)
+                results_df = screen_coins(coins, "usd", params, testing_mode)
                 
                 if results_df.empty:
                     st.warning("No coins matched the screening criteria.")

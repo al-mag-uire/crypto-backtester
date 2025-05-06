@@ -10,7 +10,7 @@ def plot_strategy_indicators(df: pd.DataFrame, strategy: str) -> None:
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), height_ratios=[2, 1])
     
     # Use index for x-axis if no timestamp column
-    x_axis = range(len(df)) if 'timestamp' not in df.columns else df['timestamp']
+    x_axis = df.index if 'timestamp' not in df.columns else df['timestamp']
     
     # Price chart (common for all strategies)
     ax1.plot(x_axis, df['close'], label='Price', color='#1E88E5', alpha=0.8)
@@ -19,9 +19,9 @@ def plot_strategy_indicators(df: pd.DataFrame, strategy: str) -> None:
     buy_points = df[df['signal'] == 1]
     sell_points = df[df['signal'] == -1]
     
-    # Use index for signals if no timestamp
-    buy_x = range(len(df))[buy_points.index] if 'timestamp' not in df.columns else buy_points['timestamp']
-    sell_x = range(len(df))[sell_points.index] if 'timestamp' not in df.columns else sell_points['timestamp']
+    # Use index for signals
+    buy_x = buy_points.index if 'timestamp' not in df.columns else buy_points['timestamp']
+    sell_x = sell_points.index if 'timestamp' not in df.columns else sell_points['timestamp']
     
     ax1.scatter(buy_x, buy_points['close'], 
                 color='#00E676', marker='^', label='Buy Signal', s=100)
